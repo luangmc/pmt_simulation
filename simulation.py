@@ -42,7 +42,7 @@ class SignalSimulation:
     def signal_time(self):
         arr_time = [self.ptc_hits[t_cluster]['arrival_time']
                      for t_cluster in self.ptc_hits.keys()]
-        return [np.sum(arr_time[:index+1]) for index, _ in enumerate(arr_time)]
+        return np.cumsum(arr_time)
 
     def cluster_signal(self, arr_time):
         amp = self.params['pmt_signal']['amplitude']\
@@ -50,19 +50,16 @@ class SignalSimulation:
                  self.params['pmt_signal']['amplitude_dispersion'] *
                  self.params['pmt_signal']['amplitude'])
         std = self.params['pmt_signal']['sigma']
-        sig = np.array([])        
-        mean = self.transit_time()[0] + arr_time + exponnorm.rvs(1.6467712068624878, loc = 0, scale = 8.870899794351182, size=1)
-        #mean = self.transit_time()[0] + arr_time + np.random.exponential(1/0.21)
+        sig = np.array([]) 
+        #mean = self.transit_time()[0] + arr_time
+        mean = self.transit_time()[0] + arr_time + exponnorm.rvs(1.6467712068624878, loc = 0, scale = 8.870899794351182, size=1)[0]
+        #mean = self.transit_time()[0] + arr_time + np.random.exponential(1/0.21)[0]
         sig = self.gaussian(self.t, amp, mean, std)
         return sig
 
     def gen_signal(self, nr_fotons, arr_time):
-        sig = np.array([])
-        for i in range(nr_fotons):
-            cl_sig = self.cluster_signal(arr_time)
-            sig = np.append(sig, cl_sig)
-        sig = sig.reshape(-1, self.params['window_len'])
-        self.recoil_signal = np.sum(sig, axis=0)
+        cl_sig = np.array([self.cluster_signal(arr_time) for _ in range(nr_fotons)])
+        self.recoil_signal = np.sum(cl_sig, axis=0)
 
     def noise_gen(self, CovarianceMatrix, size):
         covM = CovarianceMatrix
@@ -75,22 +72,19 @@ class SignalSimulation:
 
     def pmt_signal(self, nr_fotons, arr_time):
         self.quantum_efficiency(nr_fotons)
-        self.gen_signal(nr_fotons, arr_time)
+        self.gen_signal(self.nr_hits, arr_time)
         return self.recoil_signal    
 
     def simulated_signals(self):
-        pmts = ['pmt1', 'pmt2', 'pmt3', 'pmt4']
+        pmts = ['pmt_1', 'pmt_2', 'pmt_3', 'pmt_4']
         signal = {key: np.zeros([self.params['window_len']]) for key in pmts}
         arrival_time = self.signal_time()
-        cluster_keys = list(self.ptc_hits.keys())        
+        cluster_keys = list(self.ptc_hits.keys())   
         for pmt in pmts:
-            signal_aux = np.array([])
-            for i in range(len(cluster_keys)):
-                arr_time = arrival_time[i]
-                nr_fotons = self.ptc_hits[cluster_keys[i]][pmt]
-                sig = self.pmt_signal(nr_fotons, arr_time)
-                signal_aux = np.append(signal_aux, sig)
-            signal_aux = signal_aux.reshape(len(cluster_keys), -1)
+            signal_aux = np.array([self.pmt_signal(self.ptc_hits[voxel][pmt],
+                                                   arrival_time[i])
+                                   for i, voxel in enumerate(cluster_keys)],
+                                  dtype=object)
             signal[pmt] = np.sum(signal_aux, axis=0) + \
                           self.noise[pmts.index(pmt)]
         signal['time'] = self.t

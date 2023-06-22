@@ -1,6 +1,7 @@
 import numpy as np
 import math
 import json
+from tqdm import tqdm
 
 class PhotonPropagation:
     def __init__(self, x0, y0, n_fotons, arr_times):
@@ -37,43 +38,33 @@ class PhotonPropagation:
         return v
 
     def sim_pmt_hits(self, x_0, y_0, fotons):
-        hits1, hits2, hits3, hits4, no_hits = 0, 0, 0, 0, 0
+        hits = {key: 0 for key in ['pmt_1', 'pmt_2', 'pmt_3', 'pmt_4']}
+        pmt_positions = self.params['pmt_positions']
+        pmt_radius_sq = self.params['pmt_radius']**2
         
-        for i in range(fotons):            
-            
-            #u1, u2, u3 = self.random_three_vector()
-            u1, u2, u3 = self.randomvector(3)
-
-            if u2 < 0:
+        for _ in range(fotons):
+            u = self.randomvector(3)
+            if u[1] < 0:
                 continue
             
-            t = (self.params['dist_gem_pmt'] - self.z0)/u3
-            x = x_0 + t * u1
-            y = y_0 + t * u2
+            t = (self.params['dist_gem_pmt'] - self.z0) / u[2]
+            x = x_0 + t * u[0]
+            y = y_0 + t * u[1]
+            
+            for pmt_name, pmt_pos in pmt_positions.items():
+                dx = x - pmt_pos['x']
+                dy = y - pmt_pos['y']
+                if dx**2 + dy**2 < pmt_radius_sq:
+                    hits[pmt_name] += 1
+                    break
 
-            if ((x - self.params['pmt_positions']['pmt_1']['x'])**2 +  
-                (y - self.params['pmt_positions']['pmt_1']['y'])**2) < self.params['pmt_radius']**2:
-                hits1 += 1
-            elif ((x - self.params['pmt_positions']['pmt_2']['x'])**2 +  
-                  (y - self.params['pmt_positions']['pmt_2']['y'])**2) < self.params['pmt_radius']**2:
-                hits2 += 1
-            elif ((x - self.params['pmt_positions']['pmt_3']['x'])**2 +  
-                  (y - self.params['pmt_positions']['pmt_3']['y'])**2) < self.params['pmt_radius']**2:
-                hits3 += 1
-            elif ((x - self.params['pmt_positions']['pmt_4']['x'])**2 +  
-                  (y - self.params['pmt_positions']['pmt_4']['y'])**2) < self.params['pmt_radius']**2:
-                hits4 += 1
-            else: 
-                no_hits += 1
-
-        return {'pmt1': hits1, 'pmt2': hits2, 'pmt3': hits3, 'pmt4': hits4}
+        return hits
 
     def pmt_hits(self):
         hits = {}
-        for i in range(len(self.x0)):            
-            hits['cluster_{}'.format(i)] = self.sim_pmt_hits(self.x0[i], 
-                                                              self.y0[i], 
-                                                              self.n_fotons[i])
-            hits['cluster_{}'.format(i)]['arrival_time'] = self.arr_times[i]
+        for i, (x, y, f, t) in enumerate(zip(self.x0, self.y0, self.n_fotons, self.arr_times)):
+            cluster_name = 'cluster_{}'.format(i)
+            hits[cluster_name] = self.sim_pmt_hits(x, y, f)
+            hits[cluster_name]['arrival_time'] = t
                                                             
         return hits
